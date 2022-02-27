@@ -96,7 +96,7 @@ From Home Assistant **configuration.yaml** file, add the following entries:
   input_number:
     noisypi_volume:
       name: NoisyPi volume
-      initital: 80
+      initial: 80
       min: 50
       max: 95
       step: 1
@@ -123,7 +123,7 @@ From Home Assistant **configuration.yaml** file, add the following entries:
       payload_off: "off"
       state_on: "on"
       state_off: "off"
-      qos: q
+      qos: 1
       retain: false
 ```
 From Configuration > Automations, add the following 4 new automations:

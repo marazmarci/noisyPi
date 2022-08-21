@@ -163,10 +163,10 @@ def _mqtt_on_message(_mqttc, userdata, msg):
     if msg.topic == volume_command_topic:
         try:
             number = int(_payload)
+            if inVolumeRange(number):
+                setVolume(number)
         except:
             pass
-        if inVolumeRange(number):
-            setVolume(number)
 
 
 def _mqtt_on_publish(_mqttc, userdata, rc):

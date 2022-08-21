@@ -12,33 +12,22 @@ import sys
 # pip install paho-mqtt
 import paho.mqtt.publish as publish
 import paho.mqtt.client as mqtt
+from config import *
 
-hostname = "ha"  # Add the DNS or IP address of your MQTT server/broker (i.e. Mosquitto)
-username = "mqtt"  # Change to your desired MQTT username
-password = "mqtt1234"  # Change to the password for your chosen MQTT username
-
-_audioDevice = "Headphone"  # Audio device to use on Raspberry Pi - Default = "Headphone"
 _colors = ["whitenoise", "pinknoise", "brownnoise"]  # color list must match input_list choices in Home Assistant
 _currentColor = _colors[len(_colors) - 1]  # Set default color to last entry in _colors
-_publishInterval = 300  # 300 seconds (5 minutes) publish state update interval
 
-auth = {"username": username, "password": password}
 command_topic = "cmnd/noisypi/NOISE"
 state_topic = "stat/noisypi/NOISE"
 availability_topic = "tele/noisypi/LWT"
 volume_command_topic = "cmnd/noisypi/VOLUME"
 volume_state_topic = "stat/noisypi/VOLUME"
-_volumeMax = 95
-_volumeMin = 50
 color_command_topic = "cmnd/noisypi/COLOR"
 color_state_topic = "stat/noisypi/COLOR"
-qos = 1
-client_name = "noisyPi"
 _clean_session = True
-subscribe_topics = [(command_topic, qos), (state_topic, qos), (availability_topic, qos),
-                    (volume_command_topic, qos), (volume_state_topic, qos),
-                    (color_command_topic, qos), (color_state_topic, qos)]
-retain = True
+subscribe_topics = [(command_topic, mqtt_qos), (state_topic, mqtt_qos), (availability_topic, mqtt_qos),
+                    (volume_command_topic, mqtt_qos), (volume_state_topic, mqtt_qos),
+                    (color_command_topic, mqtt_qos), (color_state_topic, mqtt_qos)]
 
 
 def publishUpdate():
@@ -81,7 +70,7 @@ def inVolumeRange(number):
     if not isNumber(number):
         return False
     else:
-        if int(number) >= _volumeMin and int(number) <= _volumeMax:
+        if int(number) >= volumeMin and int(number) <= volumeMax:
             return True
         else:
             return False
@@ -122,7 +111,7 @@ def getColor():
 def setVolume(volume):
     print(f"{_dateTime()}setVolume({volume})")
     if not getVolume() == volume:
-        ret = os.system(f"amixer sset '{_audioDevice}' {volume}% -q")
+        ret = os.system(f"amixer sset '{audioDevice}' {volume}% -q")
         pub(volume_state_topic, volume)
 
 
@@ -135,7 +124,8 @@ def pub(topic, payload):
         payload = payload.rstrip()  # remove CRLF, if exists
     print(f"{_dateTime()}Publishing to topic: [{topic}] payload: [{payload}]")
     time.sleep(1)
-    publish.single(topic=topic, payload=payload, qos=qos, retain=retain, hostname=hostname, auth=auth)
+    publish.single(topic=topic, payload=payload, qos=mqtt_qos, retain=mqtt_retain, hostname=mqtt_hostname,
+                   auth=mqtt_credentials)
 
 
 def do_disconnect():
@@ -143,11 +133,11 @@ def do_disconnect():
     pub(availability_topic, "offline")
     _mqttc.loop_stop()
     _mqttc.disconnect()
-    print(f"\n{_dateTime()}Disconnected from {hostname}.")
+    print(f"\n{_dateTime()}Disconnected from {mqtt_hostname}.")
 
 
 def _mqtt_on_connect(_mqttc, userdata, flags, rc):
-    print(f"{_dateTime()}Connected to {hostname} with result code {rc}.")
+    print(f"{_dateTime()}Connected to {mqtt_hostname} with result code {rc}.")
     if rc == 0:
         _mqttc.connected_flag = True
         print(f"{_dateTime()}Connected OK > Returned code={rc}")
@@ -159,7 +149,7 @@ def _mqtt_on_connect(_mqttc, userdata, flags, rc):
 
 
 def _mqtt_on_disconnect(_mqttc, userdata, rc):
-    print(f"{_dateTime()}on_disconnect(client: {client_name}, userdata: {userdata}, rc: {rc})")
+    print(f"{_dateTime()}on_disconnect(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
     # _mqttc.connected_flag=False
 
 
@@ -180,17 +170,17 @@ def _mqtt_on_message(_mqttc, userdata, msg):
 
 
 def _mqtt_on_publish(_mqttc, userdata, rc):
-    print(f"{_dateTime()}on_publish(client: {client_name}, userdata: {userdata}, rc: {rc})")
+    print(f"{_dateTime()}on_publish(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
 
 
 def _mqtt_on_subscribe(_mqttc, userdata, mid, granted_qos):
     print(
-        f"{_dateTime()}on_subscribe(client: {client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
+        f"{_dateTime()}on_subscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
 
 
 def _mqtt_on_unsubscribe(_mqttc, userdata, mid, granted_qos):
     print(
-        f"{_dateTime()}on_unsubscribe(client: {client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
+        f"{_dateTime()}on_unsubscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
 
 
 def _mqtt_on_log(_mqtcc, userdata, level, buf):
@@ -202,7 +192,7 @@ def fullJustify(text, length, fill):
     return "[ " + text + " ]" + fill * r
 
 
-_mqttc = mqtt.Client(client_name, clean_session=_clean_session)
+_mqttc = mqtt.Client(mqtt_client_name, clean_session=_clean_session)
 _mqttc.enable_logger()
 _mqttc.on_connect = _mqtt_on_connect
 _mqttc.on_disconnect = _mqtt_on_disconnect
@@ -212,10 +202,10 @@ _mqttc.on_subscribe = _mqtt_on_subscribe
 _mqttc.on_unsubscribe = _mqtt_on_unsubscribe
 # _mqttc.on_log=_mqtt_on_log  # Uncomment line to enable MQTT logging
 
-if username is not None:
-    _mqttc.username_pw_set(username, password)
+if (mqtt_credentials.username is not None) and (mqtt_credentials.password is not None):
+    _mqttc.username_pw_set(mqtt_credentials.username, mqtt_credentials.password)
 
-_mqttc.connect(hostname, port=1883, keepalive=60)  # If MQTT not available, generates "ConnectionRefusedError" exception
+_mqttc.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
 try:
     _mqttc.loop_start()
     time.sleep(1)
@@ -235,8 +225,8 @@ try:
     while _mqttc.connected_flag:
         print(f"{_dateTime()}===========" + fullJustify("Interval Update", 50, "="))
         publishUpdate()
-        print(f"{_dateTime()}===========" + fullJustify(f"Waiting for {_publishInterval} seconds...", 50, "=") + "\n")
-        time.sleep(_publishInterval)
+        print(f"{_dateTime()}===========" + fullJustify(f"Waiting for {mqtt_publish_interval} seconds...", 50, "=") + "\n")
+        time.sleep(mqtt_publish_interval)
 
 
 except Exception as e:

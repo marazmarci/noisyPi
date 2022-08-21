@@ -62,6 +62,10 @@ def _dateTime():
     return f"{_date} {_time} - "
 
 
+def log(msg):
+    print(f"{_dateTime()}{msg}")
+
+
 def isNumber(number):
     return type(number) == int or type(number) == float
 
@@ -80,15 +84,15 @@ def setNoise(state, color=_currentColor):
     if state == "on":
         ret = os.system(f"nohup play -n synth {color} >/dev/null 2>&1  &")  # Plays in BG with no output
         pub(state_topic, "on")
-        print(f"{_dateTime()}setNoise({state})")
+        log(f"setNoise({state})")
     else:
         ret = os.system("sudo kill $(ps -e | grep play | awk '{print $1}')")  # Stop playing of noise
         pub(state_topic, "off")
-        print(f"{_dateTime()}setNoise({state})")
+        log(f"setNoise({state})")
 
 
 def setColor(color):
-    print(f"{_dateTime()}setColor({color})")
+    log(f"setColor({color})")
     global _currentColor
     if _playRunning() and color != _currentColor:
         setNoise("off")
@@ -109,7 +113,7 @@ def getColor():
 
 
 def setVolume(volume):
-    print(f"{_dateTime()}setVolume({volume})")
+    log(f"setVolume({volume})")
     if not getVolume() == volume:
         ret = os.system(f"amixer sset '{audioDevice}' {volume}% -q")
         pub(volume_state_topic, volume)
@@ -122,7 +126,7 @@ def getVolume():
 def pub(topic, payload):
     if type(payload) == str:
         payload = payload.rstrip()  # remove CRLF, if exists
-    print(f"{_dateTime()}Publishing to topic: [{topic}] payload: [{payload}]")
+    log(f"Publishing to topic: [{topic}] payload: [{payload}]")
     time.sleep(1)
     publish.single(topic=topic, payload=payload, qos=mqtt_qos, retain=mqtt_retain, hostname=mqtt_hostname,
                    auth=mqtt_credentials)
@@ -137,25 +141,25 @@ def do_disconnect():
 
 
 def _mqtt_on_connect(_mqttc, userdata, flags, rc):
-    print(f"{_dateTime()}Connected to {mqtt_hostname} with result code {rc}.")
+    log(f"Connected to {mqtt_hostname} with result code {rc}.")
     if rc == 0:
         _mqttc.connected_flag = True
-        print(f"{_dateTime()}Connected OK > Returned code={rc}")
-        print(f"{_dateTime()}Subscribing to: \n{_dateTime()}{subscribe_topics}.")
+        log(f"Connected OK > Returned code={rc}")
+        log(f"Subscribing to: \n{_dateTime()}{subscribe_topics}.")
         _mqttc.subscribe(subscribe_topics)
     else:
-        print(f"{_dateTime()}Bad connection > Returned code={rc}")
+        log(f"Bad connection > Returned code={rc}")
         do_disconnect()
 
 
 def _mqtt_on_disconnect(_mqttc, userdata, rc):
-    print(f"{_dateTime()}on_disconnect(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
+    log(f"on_disconnect(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
     # _mqttc.connected_flag=False
 
 
 def _mqtt_on_message(_mqttc, userdata, msg):
     _payload = str(msg.payload.decode('utf-8')).rstrip()
-    print(f"{_dateTime()}on_message({msg.topic} {_payload})")
+    log(f"on_message({msg.topic} {_payload})")
     if _payload in ('on', 'off') and msg.topic == command_topic:
         setNoise(_payload)
     if _payload in _colors and msg.topic == color_command_topic:
@@ -170,21 +174,19 @@ def _mqtt_on_message(_mqttc, userdata, msg):
 
 
 def _mqtt_on_publish(_mqttc, userdata, rc):
-    print(f"{_dateTime()}on_publish(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
+    log(f"on_publish(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
 
 
 def _mqtt_on_subscribe(_mqttc, userdata, mid, granted_qos):
-    print(
-        f"{_dateTime()}on_subscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
+    log(f"on_subscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
 
 
 def _mqtt_on_unsubscribe(_mqttc, userdata, mid, granted_qos):
-    print(
-        f"{_dateTime()}on_unsubscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
+    log(f"on_unsubscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
 
 
 def _mqtt_on_log(_mqtcc, userdata, level, buf):
-    print(f"{_dateTime()}on_log: {buf}")
+    log(f"on_log: {buf}")
 
 
 def fullJustify(text, length, fill):
@@ -223,9 +225,9 @@ pub(availability_topic, "online")
 
 try:
     while _mqttc.connected_flag:
-        print(f"{_dateTime()}===========" + fullJustify("Interval Update", 50, "="))
+        log(f"===========" + fullJustify("Interval Update", 50, "="))
         publishUpdate()
-        print(f"{_dateTime()}===========" + fullJustify(f"Waiting for {mqtt_publish_interval} seconds...", 50, "=") + "\n")
+        log(f"===========" + fullJustify(f"Waiting for {mqtt_publish_interval} seconds...", 50, "=") + "\n")
         time.sleep(mqtt_publish_interval)
 
 

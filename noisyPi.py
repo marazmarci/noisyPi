@@ -70,7 +70,7 @@ def inVolumeRange(number):
     if not isNumber(number):
         return False
     else:
-        if int(number) >= volumeMin and int(number) <= volumeMax:
+        if volumeMin <= int(number) <= volumeMax:
             return True
         else:
             return False

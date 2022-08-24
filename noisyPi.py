@@ -2,6 +2,7 @@
 # Git Repository: https://github.com/ras434/noisyPi
 
 import os
+import signal
 import subprocess
 import time
 import datetime
@@ -18,8 +19,8 @@ colors = ["whitenoise", "pinknoise", "brownnoise"]  # color list must match inpu
 color_state = colors[len(colors) - 1]  # Set default color to last entry in _colors
 
 state_topic = "noisypi/state"
-command_topic = "noisypi/command"
-availability_topic = "noisypi/available"
+command_topic = "noisypi/state/command"
+availability_topic = "noisypi/availability"
 volume_state_topic = "noisypi/volume"
 volume_command_topic = "noisypi/volume/command"
 color_state_topic = "noisypi/color"
@@ -37,6 +38,8 @@ subscribe_topics = [
 
 mqtt_connected = False
 
+play_process = None
+
 
 def publish_update():
     pub(state_topic, get_state())
@@ -52,14 +55,6 @@ def get_state():
         return "on"
     else:
         return "off"
-
-
-def is_play_running():
-    try:
-        call = subprocess.check_output("pidof 'play'", shell=True)
-        return True
-    except subprocess.CalledProcessError:
-        return False
 
 
 def get_date_time():
@@ -87,13 +82,50 @@ def is_in_volume_range(number):
             return False
 
 
+def is_play_running():
+    if play_process is None:
+        return False
+    try:
+        #call = subprocess.check_output("pidof 'play'", shell=True)
+        # noinspection PyUnresolvedReferences
+        return play_process.poll() is None
+    except subprocess.CalledProcessError:
+        return False
+
+
 def set_noise(state, color=color_state):
+    global play_process
     if state == "on":
-        ret = os.system(f"nohup play -n synth {color} >/dev/null 2>&1  &")  # Plays in BG with no output
-        log(f"setNoise({state})")
+        if not is_play_running():
+            play_process = subprocess.Popen(f"play -n synth {color} > /dev/null 2>&1", stdout=subprocess.DEVNULL,
+                                            shell=True, preexec_fn=os.setsid)
+            # ret = os.system(f"nohup play -n synth {color} >/dev/null 2>&1  &")  # Plays in BG with no output
+            log(f"setNoise({state})")
     else:
-        ret = os.system("sudo kill $(ps -e | grep play | awk '{print $1}')")  # Stop playing of noise
+        if play_process is not None:
+            pid = play_process.pid
+            play_process = None
+            try:
+                log("os.killpg...")
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except Exception as e:
+                print(e)
+                pass
+        kill_all_leftover_play_processes()
         log(f"setNoise({state})")
+    publish_update()
+
+
+def kill_all_leftover_play_processes():
+    global play_process
+    try:
+        log("pkill...")
+        # subprocess.Popen("ps -e | grep play | awk '{print $1}' | xargs kill", shell=True, preexec_fn=os.setsid)
+        subprocess.Popen("pkill play", shell=True)
+        play_process = None
+    except Exception as e:
+        print(e)
+        pass
 
 
 def set_color(color):
@@ -105,6 +137,7 @@ def set_color(color):
         set_noise("on", color)
         # time.sleep(0.5) # TODO
     color_state = color
+    publish_update()
 
 
 def get_color():
@@ -119,6 +152,7 @@ def set_volume(volume):
     log(f"setVolume({volume})")
     if not get_volume() == volume:
         ret = os.system(f"amixer sset '{audioDevice}' {volume}% -q")
+    publish_update()
 
 
 def get_volume():
@@ -137,8 +171,8 @@ def pub(topic, payload):
 def do_disconnect():
     print(f"\n{get_date_time()}do_disconnect()")
     pub(availability_topic, "offline")
-    mqtt.loop_stop()
-    mqtt.disconnect()
+    # mqttc.loop_stop()
+    mqttc.disconnect()
     print(f"\n{get_date_time()}Disconnected from {mqtt_hostname}.")
 
 
@@ -149,7 +183,7 @@ def mqtt_on_connect(mqtt, userdata, flags, rc):
         mqtt_connected = True
         log(f"Connected OK > Returned code={rc}")
         log(f"Subscribing to: \n{get_date_time()}{subscribe_topics}.")
-        mqtt.subscribe(subscribe_topics)
+        mqttc.subscribe(subscribe_topics)
     else:
         log(f"Bad connection > Returned code={rc}")
         do_disconnect()
@@ -159,7 +193,7 @@ def mqtt_on_disconnect(mqtt, userdata, rc):
     global mqtt_connected
     log(f"on_disconnect(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
     mqtt_connected = False
-    # mqtt.connected_flag=False
+    # mqttc.connected_flag=False
 
 
 def mqtt_on_message(mqtt, userdata, msg):
@@ -174,7 +208,8 @@ def mqtt_on_message(mqtt, userdata, msg):
             number = int(payload)
             if is_in_volume_range(number):
                 set_volume(number)
-        except:
+        except Exception as e:
+            print(e)
             pass
 
 
@@ -199,48 +234,51 @@ def full_justify(text, length, fill):
     return "[ " + text + " ]" + fill * r
 
 
-mqtt = mqtt.Client(mqtt_client_name, clean_session=True)
-mqtt.enable_logger()
-mqtt.on_connect = mqtt_on_connect
-mqtt.on_disconnect = mqtt_on_disconnect
-mqtt.on_message = mqtt_on_message
-mqtt.on_publish = mqtt_on_publish
-mqtt.on_subscribe = mqtt_on_subscribe
-mqtt.on_unsubscribe = mqtt_on_unsubscribe
-# mqtt.on_log = mqtt_log  # Uncomment line to enable MQTT logging
+kill_all_leftover_play_processes()
 
-if (mqtt_credentials.username is not None) and (mqtt_credentials.password is not None):
-    mqtt.username_pw_set(mqtt_credentials.username, mqtt_credentials.password)
+mqttc = mqtt.Client(mqtt_client_name, clean_session=True)
+mqttc.enable_logger()
+mqttc.on_connect = mqtt_on_connect
+mqttc.on_disconnect = mqtt_on_disconnect
+mqttc.on_message = mqtt_on_message
+mqttc.on_publish = mqtt_on_publish
+mqttc.on_subscribe = mqtt_on_subscribe
+mqttc.on_unsubscribe = mqtt_on_unsubscribe
+# mqttc.on_log = mqtt_log  # Uncomment line to enable MQTT logging
 
-mqtt.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
+mqttc.username_pw_set(mqtt_credentials["username"], mqtt_credentials["password"])
+
+mqttc.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
 try:
-    mqtt.loop_start()
-    time.sleep(1)
+    mqttc.loop_start()
+    # time.sleep(1)
+    time.sleep(0.1)
     while not mqtt_connected:
-        time.sleep(0.1)
         sys.stdout.write(".")
+        time.sleep(0.1)
     print()
 
 except Exception as e:
     print(f"\n{get_date_time()}Error: {e}")
     do_disconnect()
 
-time.sleep(3)
+# time.sleep(3)
 pub(availability_topic, "online")
 
 try:
     while mqtt_connected:
-        time.sleep(30)
-
-
+        time.sleep(1)
 except Exception as e:
     print(f"\n{get_date_time()}Exit from sleep loop.")
     print(f"\n{get_date_time()}mqtt_connected = {mqtt_connected}")
     print(f"\n{get_date_time()}Error: {e}")
+    kill_all_leftover_play_processes()
     do_disconnect()
+    raise e
 
-except KeyboardInterrupt:
+except KeyboardInterrupt as e:
     print(f"\n{get_date_time()}Aborting. (KeyboardInterrupt)")
+    kill_all_leftover_play_processes()
     do_disconnect()
     print("\n\nGood bye.\n")
-    exit(0)
+    raise e

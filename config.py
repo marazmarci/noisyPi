@@ -8,7 +8,6 @@ mqtt_client_name = "noisyPi"
 mqtt_keepalive = 60
 mqtt_qos = 1
 mqtt_retain = True
-mqtt_publish_interval = 300  # 300 seconds (5 minutes) publish state update interval
 
 audioDevice = "Headphone"  # Audio device to use on Raspberry Pi - Default = "Headphone"
 volumeMax = 95

@@ -14,40 +14,47 @@ import paho.mqtt.publish as publish
 import paho.mqtt.client as mqtt
 from config import *
 
-_colors = ["whitenoise", "pinknoise", "brownnoise"]  # color list must match input_list choices in Home Assistant
-_currentColor = _colors[len(_colors) - 1]  # Set default color to last entry in _colors
+colors = ["whitenoise", "pinknoise", "brownnoise"]  # color list must match input_list choices in Home Assistant
+color_state = colors[len(colors) - 1]  # Set default color to last entry in _colors
 
-command_topic = "cmnd/noisypi/NOISE"
-state_topic = "stat/noisypi/NOISE"
-availability_topic = "tele/noisypi/LWT"
-volume_command_topic = "cmnd/noisypi/VOLUME"
-volume_state_topic = "stat/noisypi/VOLUME"
-color_command_topic = "cmnd/noisypi/COLOR"
-color_state_topic = "stat/noisypi/COLOR"
-_clean_session = True
-subscribe_topics = [(command_topic, mqtt_qos), (state_topic, mqtt_qos), (availability_topic, mqtt_qos),
-                    (volume_command_topic, mqtt_qos), (volume_state_topic, mqtt_qos),
-                    (color_command_topic, mqtt_qos), (color_state_topic, mqtt_qos)]
+state_topic = "noisypi/state"
+command_topic = "noisypi/command"
+availability_topic = "noisypi/available"
+volume_state_topic = "noisypi/volume"
+volume_command_topic = "noisypi/volume/command"
+color_state_topic = "noisypi/color"
+color_command_topic = "noisypi/color/command"
 
+subscribe_topics = [
+    (state_topic, mqtt_qos),
+    (command_topic, mqtt_qos),
+    (availability_topic, mqtt_qos),
+    (volume_state_topic, mqtt_qos),
+    (volume_command_topic, mqtt_qos),
+    (color_state_topic, mqtt_qos),
+    (color_command_topic, mqtt_qos),
+]
 
-def publishUpdate():
-    _state = getState()
-    _stateVolume = getVolume()
-    _stateColor = getColor()
-    pubList = [(state_topic, _state), (volume_state_topic, _stateVolume), (color_state_topic, _stateColor)]
-    for _topic, _payload in pubList:
-        pub(_topic, _payload)
-        time.sleep(0.5)
+mqtt_connected = False
 
 
-def getState():
-    if _playRunning():
+def publish_update():
+    pub(state_topic, get_state())
+    # time.sleep(0.5)
+    pub(volume_state_topic, get_volume())
+    # time.sleep(0.5)
+    pub(color_state_topic, get_color())
+    # time.sleep(0.5)
+
+
+def get_state():
+    if is_play_running():
         return "on"
     else:
         return "off"
 
 
-def _playRunning():
+def is_play_running():
     try:
         call = subprocess.check_output("pidof 'play'", shell=True)
         return True
@@ -55,7 +62,7 @@ def _playRunning():
         return False
 
 
-def _dateTime():
+def get_date_time():
     _date = datetime.datetime.now()
     _time = _date.strftime("%X")
     _date = _date.strftime("%x")
@@ -63,15 +70,15 @@ def _dateTime():
 
 
 def log(msg):
-    print(f"{_dateTime()}{msg}")
+    print(f"{get_date_time()}{msg}")
 
 
-def isNumber(number):
+def is_number(number):
     return type(number) == int or type(number) == float
 
 
-def inVolumeRange(number):
-    if not isNumber(number):
+def is_in_volume_range(number):
+    if not is_number(number):
         return False
     else:
         if volumeMin <= int(number) <= volumeMax:
@@ -80,46 +87,41 @@ def inVolumeRange(number):
             return False
 
 
-def setNoise(state, color=_currentColor):
+def set_noise(state, color=color_state):
     if state == "on":
         ret = os.system(f"nohup play -n synth {color} >/dev/null 2>&1  &")  # Plays in BG with no output
-        pub(state_topic, "on")
         log(f"setNoise({state})")
     else:
         ret = os.system("sudo kill $(ps -e | grep play | awk '{print $1}')")  # Stop playing of noise
-        pub(state_topic, "off")
         log(f"setNoise({state})")
 
 
-def setColor(color):
-    log(f"setColor({color})")
-    global _currentColor
-    if _playRunning() and color != _currentColor:
-        setNoise("off")
-        time.sleep(0.5)
-        setNoise("on", color)
-        time.sleep(0.5)
-    _currentColor = color
-    pub(color_state_topic, _currentColor)
+def set_color(color):
+    log(f"set_color({color})")
+    global color_state
+    if is_play_running() and color != color_state:
+        set_noise("off")
+        # time.sleep(0.5) # TODO
+        set_noise("on", color)
+        # time.sleep(0.5) # TODO
+    color_state = color
 
 
-def getColor():
-    global _currentColor
-    if _playRunning():
+def get_color():
+    global color_state
+    if is_play_running():
         return_color = os.popen("ps -e -f | grep -m1 synth | awk '{print $11}'").read()
-        if return_color in _colors:
-            _currentColor = return_color
-    return _currentColor
+        if return_color in colors:
+            return return_color
 
 
-def setVolume(volume):
+def set_volume(volume):
     log(f"setVolume({volume})")
-    if not getVolume() == volume:
+    if not get_volume() == volume:
         ret = os.system(f"amixer sset '{audioDevice}' {volume}% -q")
-        pub(volume_state_topic, volume)
 
 
-def getVolume():
+def get_volume():
     return int(os.popen("amixer | grep % | awk '{print $4}' | sed 's/\[//; s/\]//; s/\%//'").read())
 
 
@@ -127,118 +129,118 @@ def pub(topic, payload):
     if type(payload) == str:
         payload = payload.rstrip()  # remove CRLF, if exists
     log(f"Publishing to topic: [{topic}] payload: [{payload}]")
-    time.sleep(1)
+    # time.sleep(1)
     publish.single(topic=topic, payload=payload, qos=mqtt_qos, retain=mqtt_retain, hostname=mqtt_hostname,
                    auth=mqtt_credentials)
 
 
 def do_disconnect():
-    print(f"\n{_dateTime()}do_disconnect()")
+    print(f"\n{get_date_time()}do_disconnect()")
     pub(availability_topic, "offline")
-    _mqttc.loop_stop()
-    _mqttc.disconnect()
-    print(f"\n{_dateTime()}Disconnected from {mqtt_hostname}.")
+    mqtt.loop_stop()
+    mqtt.disconnect()
+    print(f"\n{get_date_time()}Disconnected from {mqtt_hostname}.")
 
 
-def _mqtt_on_connect(_mqttc, userdata, flags, rc):
+def mqtt_on_connect(mqtt, userdata, flags, rc):
+    global mqtt_connected
     log(f"Connected to {mqtt_hostname} with result code {rc}.")
     if rc == 0:
-        _mqttc.connected_flag = True
+        mqtt_connected = True
         log(f"Connected OK > Returned code={rc}")
-        log(f"Subscribing to: \n{_dateTime()}{subscribe_topics}.")
-        _mqttc.subscribe(subscribe_topics)
+        log(f"Subscribing to: \n{get_date_time()}{subscribe_topics}.")
+        mqtt.subscribe(subscribe_topics)
     else:
         log(f"Bad connection > Returned code={rc}")
         do_disconnect()
 
 
-def _mqtt_on_disconnect(_mqttc, userdata, rc):
+def mqtt_on_disconnect(mqtt, userdata, rc):
+    global mqtt_connected
     log(f"on_disconnect(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
-    # _mqttc.connected_flag=False
+    mqtt_connected = False
+    # mqtt.connected_flag=False
 
 
-def _mqtt_on_message(_mqttc, userdata, msg):
-    _payload = str(msg.payload.decode('utf-8')).rstrip()
-    log(f"on_message({msg.topic} {_payload})")
-    if _payload in ('on', 'off') and msg.topic == command_topic:
-        setNoise(_payload)
-    if _payload in _colors and msg.topic == color_command_topic:
-        setColor(_payload)
+def mqtt_on_message(mqtt, userdata, msg):
+    payload = str(msg.payload.decode('utf-8')).rstrip()
+    log(f"on_message({msg.topic} {payload})")
+    if payload in ('on', 'off') and msg.topic == command_topic:
+        set_noise(payload)
+    if payload in colors and msg.topic == color_command_topic:
+        set_color(payload)
     if msg.topic == volume_command_topic:
         try:
-            number = int(_payload)
-            if inVolumeRange(number):
-                setVolume(number)
+            number = int(payload)
+            if is_in_volume_range(number):
+                set_volume(number)
         except:
             pass
 
 
-def _mqtt_on_publish(_mqttc, userdata, rc):
-    log(f"on_publish(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
+def mqtt_on_publish(_mqtt, userdata, rc):
+    log(f"mqtt_on_publish(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
 
 
-def _mqtt_on_subscribe(_mqttc, userdata, mid, granted_qos):
-    log(f"on_subscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
+def mqtt_on_subscribe(_mqtt, userdata, mid, granted_qos):
+    log(f"mqtt_on_subscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
 
 
-def _mqtt_on_unsubscribe(_mqttc, userdata, mid, granted_qos):
-    log(f"on_unsubscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
+def mqtt_on_unsubscribe(_mqtt, userdata, mid, granted_qos):
+    log(f"mqtt_on_unsubscribe(client: {mqtt_client_name}, userdata: {userdata}, rc: {mid}, granted_qos: {granted_qos})")
 
 
-def _mqtt_on_log(_mqtcc, userdata, level, buf):
-    log(f"on_log: {buf}")
+def mqtt_log(_mqtt, userdata, level, buf):
+    log(f"mqtt_log: {buf}")
 
 
-def fullJustify(text, length, fill):
+def full_justify(text, length, fill):
     r = length - len(text)
     return "[ " + text + " ]" + fill * r
 
 
-_mqttc = mqtt.Client(mqtt_client_name, clean_session=_clean_session)
-_mqttc.enable_logger()
-_mqttc.on_connect = _mqtt_on_connect
-_mqttc.on_disconnect = _mqtt_on_disconnect
-_mqttc.on_message = _mqtt_on_message
-_mqttc.on_publish = _mqtt_on_publish
-_mqttc.on_subscribe = _mqtt_on_subscribe
-_mqttc.on_unsubscribe = _mqtt_on_unsubscribe
-# _mqttc.on_log=_mqtt_on_log  # Uncomment line to enable MQTT logging
+mqtt = mqtt.Client(mqtt_client_name, clean_session=True)
+mqtt.enable_logger()
+mqtt.on_connect = mqtt_on_connect
+mqtt.on_disconnect = mqtt_on_disconnect
+mqtt.on_message = mqtt_on_message
+mqtt.on_publish = mqtt_on_publish
+mqtt.on_subscribe = mqtt_on_subscribe
+mqtt.on_unsubscribe = mqtt_on_unsubscribe
+# mqtt.on_log = mqtt_log  # Uncomment line to enable MQTT logging
 
 if (mqtt_credentials.username is not None) and (mqtt_credentials.password is not None):
-    _mqttc.username_pw_set(mqtt_credentials.username, mqtt_credentials.password)
+    mqtt.username_pw_set(mqtt_credentials.username, mqtt_credentials.password)
 
-_mqttc.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
+mqtt.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
 try:
-    _mqttc.loop_start()
+    mqtt.loop_start()
     time.sleep(1)
-    while not _mqttc.connected_flag:
+    while not mqtt_connected:
         time.sleep(0.1)
         sys.stdout.write(".")
     print()
 
 except Exception as e:
-    print(f"\n{_dateTime()}Error: {e}")
+    print(f"\n{get_date_time()}Error: {e}")
     do_disconnect()
 
 time.sleep(3)
 pub(availability_topic, "online")
 
 try:
-    while _mqttc.connected_flag:
-        log(f"===========" + fullJustify("Interval Update", 50, "="))
-        publishUpdate()
-        log(f"===========" + fullJustify(f"Waiting for {mqtt_publish_interval} seconds...", 50, "=") + "\n")
-        time.sleep(mqtt_publish_interval)
+    while mqtt_connected:
+        time.sleep(30)
 
 
 except Exception as e:
-    print(f"\n{_dateTime()}Exit from sleep loop.")
-    print(f"\n{_dateTime()}_mqttc.connected_flag({_mqttc.connected_flag})")
-    print(f"\n{_dateTime()}Error: {e}")
+    print(f"\n{get_date_time()}Exit from sleep loop.")
+    print(f"\n{get_date_time()}mqtt_connected = {mqtt_connected}")
+    print(f"\n{get_date_time()}Error: {e}")
     do_disconnect()
 
 except KeyboardInterrupt:
-    print(f"\n{_dateTime()}Aborting. (KeyboardInterrupt)")
+    print(f"\n{get_date_time()}Aborting. (KeyboardInterrupt)")
     do_disconnect()
     print("\n\nGood bye.\n")
-    os._exit(0)
+    exit(0)

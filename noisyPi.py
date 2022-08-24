@@ -137,7 +137,7 @@ def set_color(color):
         set_noise("on", color)
         # time.sleep(0.5) # TODO
     color_state = color
-    publish_update()
+    pub(color_state_topic, get_color())
 
 
 def get_color():
@@ -152,7 +152,7 @@ def set_volume(volume):
     log(f"setVolume({volume})")
     if not get_volume() == volume:
         ret = os.system(f"amixer sset '{audioDevice}' {volume}% -q")
-    publish_update()
+    pub(volume_state_topic, get_volume())
 
 
 def get_volume():
@@ -176,7 +176,7 @@ def do_disconnect():
     print(f"\n{get_date_time()}Disconnected from {mqtt_hostname}.")
 
 
-def mqtt_on_connect(mqtt, userdata, flags, rc):
+def mqtt_on_connect(_mqtt, userdata, flags, rc):
     global mqtt_connected
     log(f"Connected to {mqtt_hostname} with result code {rc}.")
     if rc == 0:
@@ -189,14 +189,14 @@ def mqtt_on_connect(mqtt, userdata, flags, rc):
         do_disconnect()
 
 
-def mqtt_on_disconnect(mqtt, userdata, rc):
+def mqtt_on_disconnect(_mqtt, userdata, rc):
     global mqtt_connected
     log(f"on_disconnect(client: {mqtt_client_name}, userdata: {userdata}, rc: {rc})")
     mqtt_connected = False
     # mqttc.connected_flag=False
 
 
-def mqtt_on_message(mqtt, userdata, msg):
+def mqtt_on_message(_mqtt, userdata, msg):
     payload = str(msg.payload.decode('utf-8')).rstrip()
     log(f"on_message({msg.topic} {payload})")
     if payload in ('on', 'off') and msg.topic == command_topic:

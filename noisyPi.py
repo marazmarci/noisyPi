@@ -141,11 +141,11 @@ def set_color(color):
 
 
 def get_color():
-    global color_state
-    if is_play_running():
-        return_color = os.popen("ps -e -f | grep -m1 synth | awk '{print $11}'").read()
-        if return_color in colors:
-            return return_color
+    return color_state
+    # if is_play_running():
+    #     return_color = os.popen("ps -e -f | grep -m1 synth | awk '{print $11}'").read()
+    #     if return_color in colors:
+    #         return return_color
 
 
 def set_volume(volume):

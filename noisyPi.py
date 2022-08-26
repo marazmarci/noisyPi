@@ -249,6 +249,8 @@ mqttc.on_unsubscribe = mqtt_on_unsubscribe
 mqttc.username_pw_set(mqtt_credentials["username"], mqtt_credentials["password"])
 
 mqttc.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
+mqttc.will_set(topic=availability_topic, payload="offline", qos=mqtt_qos, retain=mqtt_retain)
+
 try:
     mqttc.loop_start()
     # time.sleep(1)

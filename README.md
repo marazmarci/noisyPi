@@ -11,7 +11,7 @@ Raspberry Pi noise generator integration with Home Assistant using MQTT.
   + Python3 >= v3.7.3 (https://www.python.org/)
   + SoX - Sound eXchange (http://sox.sourceforge.net/)
   + paho-mqtt >= v1.5.1 (https://pypi.org/project/paho-mqtt/)
-  + start `/home/pi/noisyPi/noisyPi.py` on boot via `/etc/rc.local`
+  + run `/home/pi/noisyPi/noisyPi.py` as a systemd service (started on boot)
 + Home Assistant (https://www.home-assistant.io/)
   + MQTT Broker (Mosquitto)
   + MQTT account (to authenticate with NoisyPi)
@@ -25,71 +25,97 @@ Raspberry Pi noise generator integration with Home Assistant using MQTT.
 ---
 # Installation
 
+Note: This guide shows the usage of the `nano` command line text editor, when needing to edit files, but you can use any other editor (eg. `vi`).
+
 ## Steps
 
 
 1. [Install Python3](https://github.com/marazmarci/noisyPi#1--install-python3)
 2. [Install SoX - Sound eXchange](https://github.com/marazmarci/noisyPi#2-install-sox---sound-exchange)
 3. [Install paho-mqtt](https://github.com/marazmarci/noisyPi#3-install-paho-mqtt)
-4. [Edit /etc/rc.local](https://github.com/marazmarci/noisyPi#4-edit-etcrclocal)
-5. [Clone noisyPi.py](https://github.com/marazmarci/noisyPi#5-clone-the-noisypi-repository)
-6. [Setup Home Assistant](https://github.com/marazmarci/noisyPi#6-setup-home-assistant)
-7. [Add noisyPi card to Home Assistant](https://github.com/marazmarci/noisyPi#7-add-noisypi-card-to-home-assistant)
-8. [Reboot Your Raspberry Pi](https://github.com/marazmarci/noisyPi#8-reboot-your-raspberry-pi)
+4. [Clone the noisyPi repository](https://github.com/marazmarci/noisyPi#4-clone-the-noisypi-repository)
+5. [Edit the MQTT credentials in config.py](https://github.com/marazmarci/noisyPi#5-edit-the-mqtt-credentials-in-configpy)
+6. [Add noisyPi as a systemd service](https://github.com/marazmarci/noisyPi#6-add-noisypi-as-a-systemd-service)
+7. [Setup Home Assistant](https://github.com/marazmarci/noisyPi#7-setup-home-assistant)
+8. [Add noisyPi card to Home Assistant](https://github.com/marazmarci/noisyPi#8-add-noisypi-card-to-home-assistant)
 
 ## 1. ![Python3](https://docs.python.org/3/_static/py.png) Install Python3
-From the Raspberry Pi:
+On the Raspberry Pi:
 ```sh
-  sudo apt update
-  sudo apt install python3
+sudo apt update
+sudo apt install python3
 ```
 
 ## 2. Install SoX - Sound eXchange
-From the Raspberry Pi:
 
 ```sh
-  apt-get install sox
+apt-get install sox
 ```
 
 ## 3. Install paho-mqtt
-From the Raspberry Pi:
 
 ```sh
-  pip install paho-mqtt
+pip install paho-mqtt
 ```
 
-## 4. Edit `/etc/rc.local`
-From the Raspberry Pi:
-
-Using nano or vi edit `/etc/rc.local`.
-
-**nano example:**
+## 4. Clone the noisyPi repository
 
 ```sh
-  sudo nano /etc/rc.local
+cd /home/pi
+git clone https://github.com/marazmarci/noisyPi.git
 ```
 
-Paste the following lines to the end of the file:
+## 5. Edit the MQTT credentials in config.py
 
 ```sh
-  # Run noisyPi setup
-  amixer sset 'Headphone' 95%
-  python3 /home/pi/noisyPi/noisyPi.py
-  exit 0
+cd noisyPi
+nano /etc/systemd/system/noisypi.service
 ```
 
 **CTRL+X** to exit, then **Y** to save, and **Enter** to confirm.
 
-## 5. Clone the noisyPi repository
-From the Raspberry Pi:
+## 6. Add noisyPi as a systemd service
+
+Create `/etc/systemd/system/noisypi.service`:
 
 ```sh
-  cd
-  git clone https://github.com/marazmarci/noisyPi.git
+sudo nano /etc/systemd/system/noisypi.service
 ```
 
-## 6. Setup Home Assistant
-From Home Assistant `configuration.yaml` file, add the following entries:
+Paste this in the editor:
+
+```sh
+[Unit]
+Description=noisyPi
+StartLimitIntervalSec=0
+
+[Service]
+User=pi
+ExecStart=python3 /home/pi/noisyPi/noisyPi.py
+Restart=always
+RestartSec=15s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**CTRL+X** to exit, then **Y** to save, and **Enter** to confirm.
+
+Run these commands after saving the file:
+
+```
+sudo systemctl daemon-reload
+sudo systemctl enable noisypi.service
+sudo service noisypi start
+sudo service noisypi status
+```
+
+Whenever your Pi restarts, the noisyPi service will be started automatically.
+
+And if the Python script crashes/stops for some reason (eg. MQTT disconnects), the service will be restarted automatically with a 15 seconds delay.
+
+## 7. Setup Home Assistant
+Add the following lines to Home Assistant's `configuration.yaml` file:
 
 ```yaml
 mqtt:
@@ -126,9 +152,7 @@ input_select:
     initial: brownnoise
     icon: mdi:palette
 ```
-From **Configuration > Automations**, add the following 2 new automations:
-
-<br>
+Open **Configuration > Automations** and add the following 2 new automations:
 
 `NoisyPi Color (pub)`:
 ```yaml
@@ -169,17 +193,7 @@ mode: single
 
 
 
-## 7. Add noisyPi Card to Home Assistant
-From Home Assistant:
-In your Lovelace UI, edit your preferred dashboard and add the noisyPi elements:
+## 8. Add noisyPi Card to Home Assistant
+Add these entities to your preferred dashboard:
+
 ![card](./images/noisyPi_HA_card.png)
-
-
-## 8. Reboot Your Raspberry Pi:
-From Raspberry Pi:
-
-```sh
-sudo reboot
-```
-
-Once your Pi completes the reboot, it should automatically start `noisyPi.py`.

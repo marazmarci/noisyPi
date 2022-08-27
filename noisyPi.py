@@ -171,7 +171,8 @@ def pub(topic, payload):
 def do_disconnect():
     print(f"\n{get_date_time()}do_disconnect()")
     pub(availability_topic, "offline")
-    # mqttc.loop_stop()
+    time.sleep(1)
+    mqttc.loop_stop()
     mqttc.disconnect()
     print(f"\n{get_date_time()}Disconnected from {mqtt_hostname}.")
 
@@ -248,8 +249,8 @@ mqttc.on_unsubscribe = mqtt_on_unsubscribe
 
 mqttc.username_pw_set(mqtt_credentials["username"], mqtt_credentials["password"])
 
-mqttc.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
 mqttc.will_set(topic=availability_topic, payload="offline", qos=mqtt_qos, retain=mqtt_retain)
+mqttc.connect(mqtt_hostname, port=mqtt_port, keepalive=mqtt_keepalive)  # If MQTT not available, generates "ConnectionRefusedError"
 
 try:
     mqttc.loop_start()

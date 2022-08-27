@@ -171,7 +171,6 @@ def pub(topic, payload):
 def do_disconnect():
     print(f"\n{get_date_time()}do_disconnect()")
     pub(availability_topic, "offline")
-    time.sleep(1)
     mqttc.disconnect()
     mqttc.loop_stop()
     print(f"\n{get_date_time()}Disconnected from {mqtt_hostname}.")
